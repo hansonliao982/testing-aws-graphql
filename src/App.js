@@ -1,25 +1,135 @@
 import logo from "./logo.svg";
 import "./App.css";
+import { listNotes } from "./graphql/queries";
+import {
+  createNote as createNoteMutation,
+  deleteNote as deleteNoteMutation,
+} from "./graphql/mutations";
+import { useEffect, useState } from "react";
+import { generateClient } from "aws-amplify/api";
+import { Amplify } from "aws-amplify";
+import config from "./amplifyconfiguration.json";
+import {
+  Button,
+  Fieldset,
+  Flex,
+  Heading,
+  Text,
+  TextField,
+  View,
+} from "@aws-amplify/ui-react";
+import { uploadData } from "aws-amplify/storage";
 
-function App() {
+const App = () => {
+  Amplify.configure(config, { ssr: true });
+  const client = generateClient();
+  const [notes, setNotes] = useState([]);
+
+  useEffect(() => {
+    fetchNotes();
+  }, []);
+
+  async function fetchNotes() {
+    const apiData = await client.graphql({ query: listNotes });
+    const notesFromAPI = apiData.data.listNotes.items;
+    setNotes(notesFromAPI);
+    console.log(notesFromAPI);
+  }
+
+  async function createNote(event) {
+    event.preventDefault();
+    const form = new FormData(event.target);
+    const image = form.get("image");
+    const data = {
+      name: form.get("name"),
+      description: form.get("description"),
+      image: image.name,
+    };
+
+    // if (!!data.image) {
+    //   await uploadData({
+    //     data: image,
+    //     options: {
+    //       accessLevel: "guest", // defaults to `guest` but can be 'private' | 'protected' | 'guest'
+    //     },
+    //   });
+    // }
+    await client.graphql({
+      query: createNoteMutation,
+      variables: { input: data },
+    });
+    fetchNotes();
+    event.target.reset();
+  }
+
+  async function deleteNote({ id }) {
+    const newNotes = notes.filter((note) => note.id !== id);
+    setNotes(newNotes);
+    await client.graphql({
+      query: deleteNoteMutation,
+      variables: { input: { id } },
+    });
+  }
+
   return (
     <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn Reacting
-        </a>
-      </header>
+      <View as="form" margin="3rem 0" onSubmit={createNote}>
+        <Flex direction="row" justifyContent="center">
+          <TextField
+            name="name"
+            placeholder="Note Name"
+            label="Note Name"
+            labelHidden
+            variation="quiet"
+            required
+          />
+          <TextField
+            name="description"
+            placeholder="Note Description"
+            label="Note Description"
+            labelHidden
+            variation="quiet"
+            required
+          />
+          <View
+            name="image"
+            as="input"
+            type="file"
+            style={{ alignSelf: "end" }}
+          />
+          <Button type="submit" variation="primary">
+            Create Note
+          </Button>
+        </Flex>
+      </View>
+      <Heading level={2}>Current Notes</Heading>
+      <View margin="3rem 0">
+        {notes.map((note) => (
+          <Flex
+            key={note.id || note.name}
+            direction="row"
+            justifyContent="center"
+            alignItems="center"
+          >
+            <Text as="strong" fontWeight={700}>
+              {note.name}
+            </Text>
+            <Text as="span">{note.description}</Text>
+            {/* {note.image && (
+              <Image
+                src={note.image}
+                alt={`visual aid for ${note.name}`}
+                style={{ width: 400 }}
+              />
+            )} */}
+            <Button variation="link" onClick={() => deleteNote(note)}>
+              Delete note
+            </Button>
+          </Flex>
+        ))}
+      </View>
     </div>
   );
-}
+};
 
 export default App;
